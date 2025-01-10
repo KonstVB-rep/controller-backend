@@ -15,10 +15,10 @@ export const jwtVerifyMiddleware = (req: RequestJwt, res: Response, next: NextFu
         return;
     }
     try {
-        req.jwt = jwt.verify(token, process.env.TOKEN_SECRET_KEY as string);;
+        req.jwt = jwt.verify(token, process.env.TOKEN_SECRET_KEY as string);
         next();
     } catch (error) {
-        res.status(403).json({ success: false, message: "Необходима обновление токена" });
-        return;
+        res.status(401).json({ success: false, message: "Необходима обновление токена" });
+        console.log('Необходима обновление токена');
     }
 };

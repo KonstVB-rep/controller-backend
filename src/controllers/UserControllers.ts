@@ -1,32 +1,22 @@
 import { Request, Response } from "express";
 import bcrypt from "bcrypt";
-import 'dotenv/config'
-// import utils from "../utils/index.js";
-import jwt from "jsonwebtoken";
-import { PrismaClient } from '@prisma/client'
-import { generateTokemsAndHashRefreshToken } from "../utils/generateTokemsAndHashRefreshToken.js";
+import "dotenv/config";
+import jwt, { JsonWebTokenError } from "jsonwebtoken";
+import { PrismaClient } from "@prisma/client";
+import utils from "../utils";
 
-const prisma = new PrismaClient()
-
-
-// const generateAccessToken = (payload: { id: number; email: string }) =>
-//   utils.generateAccessToken(payload);
-// const generateRefreshToken = (payload: { id: number; email: string }) =>
-//   utils.generateRefreshToken(payload);
-
+const prisma = new PrismaClient();
 
 export const register = async (req: Request, res: Response) => {
-
   try {
-
     const user = await prisma.users.findUnique({
       where: {
         email: req.body.email,
       },
-    })
+    });
 
     if (user) {
-      res.status(400).json({
+      res.json({
         success: false,
         message: "Пользователь с таким email уже существует",
       });
@@ -36,7 +26,6 @@ export const register = async (req: Request, res: Response) => {
 
     const salt = bcrypt.genSaltSync(10);
     const hash = bcrypt.hashSync(password, salt);
-
 
     await prisma.users.create({
       data: {
@@ -50,27 +39,25 @@ export const register = async (req: Request, res: Response) => {
       where: {
         email: req.body.email,
       },
-    })
+    });
 
     if (!newUser) {
-      res.status(500).json({
+      res.json({
         success: false,
-        message: "Ошибка при регистрации", 
+        message: "Ошибка при регистрации",
       });
       return;
     }
 
-    // const token = generateAccessToken({ id: user.id, email: user.email });
-
-    // const { passwordHash, ...userData } = user;
-
-    res.status(201).json({ message: "Пользователь успешно зарегистрирован", success: true });
+    res
+      .status(201)
+      .json({ message: "Пользователь успешно зарегистрирован", success: true });
   } catch (error) {
     console.log(error);
 
-     res.status(500).json({
+    res.status(500).json({
       success: false,
-      message: 'Ошибка при регистрации',
+      message: "Ошибка при регистрации",
     });
   }
 };
@@ -78,18 +65,19 @@ export const register = async (req: Request, res: Response) => {
 export const login = async (req: Request, res: Response) => {
   try {
     // Поиск пользователя
+
     const user = await prisma.users.findUnique({
       where: {
         email: req.body.email,
       },
     });
+
     if (!user) {
-      // Просто вызываем res.json() без return
-      res.status(404).json({
+      res.json({
         success: false,
         message: "Неверные учетные данные",
       });
-      return; // Возвращаем здесь для завершения выполнения функции
+      return;
     }
 
     // Проверка пароля
@@ -99,16 +87,15 @@ export const login = async (req: Request, res: Response) => {
     );
 
     if (!isValidPassword) {
-      // Просто вызываем res.json() без return
-      res.status(400).json({
+      res.json({
         success: false,
         message: "Неверные учетные данные",
       });
-      return; // Возвращаем здесь для завершения выполнения функции
+      return;
     }
 
-    if(user.activeSession) {
-      res.status(400).json({
+    if (user.activeSession) {
+      res.json({
         success: false,
         message: "Пользователь c указанным данными уже авторизован",
       });
@@ -116,11 +103,11 @@ export const login = async (req: Request, res: Response) => {
     }
 
     // Генерация токенов и остальные действия
-    const  { token, hashedRefreshToken} =await generateTokemsAndHashRefreshToken({ id: user.id, email: user.email });
-    // const payload = { id: user.id, email: user.email };
-    // const token = generateAccessToken(payload);
-    // const refresh_token = generateRefreshToken(payload);
-    // const hashedRefreshToken = await bcrypt.hash(refresh_token, 10);
+    const { token, refresh_token, hashedRefreshToken } =
+      await utils.generateTokemsAndHashRefreshToken({
+        id: user.id,
+        email: user.email,
+      });
 
     await prisma.$transaction([
       prisma.users.update({
@@ -137,13 +124,13 @@ export const login = async (req: Request, res: Response) => {
       }),
     ]);
 
-    const { passwordHash, ...userData } = user;
+    const { passwordHash, created_at, updated_at, ...userData } = user;
 
     res.json({
       success: true,
-      user: userData,
-      token,
-      refresh_token: hashedRefreshToken,
+      user: { ...userData, activeSession: true },
+      accessToken: token,
+      refreshToken: refresh_token,
     });
   } catch (error) {
     console.log("Ошибка в процессе авторизации:", error);
@@ -156,7 +143,13 @@ export const login = async (req: Request, res: Response) => {
 
 export const logout = async (req: Request, res: Response) => {
   try {
-
+    if (!req.body.email) {
+      res.json({
+        success: false,
+        message: "Пользователь не найден",
+      });
+      return;
+    }
     const user = await prisma.users.findUnique({
       where: {
         email: req.body.email,
@@ -176,10 +169,10 @@ export const logout = async (req: Request, res: Response) => {
       data: { activeSession: false },
     });
 
-    res.json({ success: true });
+    res.json({ success: true, message: "Выход успешно выполнен" });
   } catch (error) {
     console.log("Ошибка в процессе выхода:", error);
-    res.status(500).json({
+    res.json({
       success: false,
       message: "Ошибка при выхода",
     });
@@ -190,41 +183,48 @@ interface RequestWithUserId extends Request {
   userId?: number;
 }
 
-
 export const getCurrentUser = async (req: RequestWithUserId, res: Response) => {
+  console.log("getCurrentUser", req.body);
   try {
     const user = await prisma.users.findUnique({
       where: {
-        id: req.userId,
+        email: req.body.email,
       },
     });
 
     if (!user) {
-      res.status(404).json({
+      res.json({
         succes: false,
         message: "Пользователь не найден",
       });
       return;
     }
 
-    const { passwordHash, ...userData } = user;
+    const { passwordHash, created_at, updated_at, ...userData } = user;
 
-    res.json(userData);
+    res.json({
+      success: true,
+      user: { ...userData },
+    });
   } catch (err) {
     console.log(err);
-    res.status(500).json({
+    res.json({
       succes: false,
       message: "Ошибка при получении профиля",
     });
   }
 };
 
-
-export const updateTokens = async (req: Request, res: Response):Promise<void> => {
-  const { refreshToken } = req.body;
+export const refreshTokens = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  const { refreshToken, userId } = req.body;;
 
   if (!refreshToken) {
-    res.status(400).json({ success: false, message: "Refresh token is required" });
+    res
+      .status(400)
+      .json({ success: false, message: "Refresh token is required" });
     return;
   }
 
@@ -232,79 +232,59 @@ export const updateTokens = async (req: Request, res: Response):Promise<void> =>
     // Найти refreshToken в базе данных
 
     const refreshTokenDB = await prisma.refresh_tokens.findFirst({
-      where: { refresh_token: refreshToken },
+      where: { user_id: userId },
     });
 
-    if (!refreshTokenDB) {
-      res.status(403).json({ success: false, message: "Invalid refresh token" });
+    if (!refreshTokenDB?.refresh_token) {
+      res
+        .status(401)
+        .json({ success: false, message: "Invalid refresh token" });
       return;
     }
 
     // Проверить, действителен ли refreshToken
-    jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET_KEY!) as jwt.JwtPayload;
 
-    // Генерация нового accessToken и refreshToken
-    const  { token, hashedRefreshToken} =await generateTokemsAndHashRefreshToken({ id: refreshTokenDB.user_id, email: req.body.email });
-    // const payload = { id: refreshTokenDB.user_id, email: req.body.email };
-    // const newAccessToken = generateAccessToken(payload);
-    // const newRefreshToken = generateRefreshToken(payload);
-    // const hashedNewRefreshToken = await bcrypt.hash(newRefreshToken, 10);
+    jwt.verify(
+      refreshToken,
+      process.env.REFRESH_TOKEN_SECRET_KEY!
+    ) as jwt.JwtPayload;
 
-    // Обновить refreshToken в базе данных
-    await prisma.refresh_tokens.update({
-      where: { user_id: refreshTokenDB.user_id },
-      data: { refresh_token: hashedRefreshToken },
+    //совпадает ли refreshToken в базе данных с переданным
+    const isMatch = await bcrypt.compare(
+      refreshToken,
+      refreshTokenDB.refresh_token
+    );
+
+    console.log(isMatch, "isMatch");
+
+    if (!isMatch) {
+      console.log("!isMatch");
+      res
+        .status(403)
+        .json({ success: false, message: "Invalid refresh token" });
+      return;
+    }
+
+    const token = utils.generateAccessToken({
+      id: refreshTokenDB.user_id,
+      email: req.body.email,
     });
 
     res.json({
       success: true,
       accessToken: token,
-      refreshToken: hashedRefreshToken,
     });
   } catch (error) {
-    console.error("Error refreshing tokens:", error);
-    if (error instanceof jwt.TokenExpiredError) {
-      res.status(401).json({ success: false, message: "Refresh token expired. Please log in again." });
+    console.error("Ошибка обновления токенов:", error);
+    if (error instanceof JsonWebTokenError) {
+      res
+        .status(403)
+        .json({ success: false, message: "Пожалуйста, авторизируйтесь" });
       return;
     }
 
-    res.status(403).json({ success: false, message: "Invalid or expired refresh token" });
+    res
+      .status(500)
+      .json({ success: false, message: "Ошибка при обновлении токенов" });
   }
 };
-
-
-
-// interface RequestWithUser extends Request {
-//   user?: { id: number ; email: string };
-// }
-
-// //с middleware
-// export const updateTokens = async (req: RequestWithUser, res: Response) => {
-//   const { refreshToken } = req.body;
-
-//   if (!refreshToken) {
-//     res.status(400).json({ success: false, message: "Refresh token is required" });
-//     return;
-//   }
-
-//   if (!req.user) {
-//     res.status(403).json({ success: false, message: "Unauthorized" });
-//     return;
-//   }
-
-//   const payload = { id: req.user.id, email: req.user.email };
-//   const newAccessToken = generateAccessToken(payload);
-//   const newRefreshToken = generateRefreshToken(payload);
-//   const hashedNewRefreshToken = await bcrypt.hash(newRefreshToken, 10);
-
-//   await prisma.refresh_tokens.update({
-//     where: { user_id: req.user.id },
-//     data: { refresh_token: hashedNewRefreshToken },
-//   });
-
-//   res.json({
-//     success: true,
-//     accessToken: newAccessToken,
-//     refreshToken: newRefreshToken,
-//   });
-// };

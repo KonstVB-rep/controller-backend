@@ -1,16 +1,28 @@
 
 import jwt from "jsonwebtoken";
 import 'dotenv/config'
-const generateAccessToken = (payload: { id: number; email: string }) => 
-    jwt.sign(payload, process.env.TOKEN_SECRET_KEY as string, { expiresIn: '1h' });
+import bcrypt from "bcrypt";
 
-const generateRefreshToken = (payload: { id: number; email: string }) =>
-    jwt.sign(payload, process.env.REFRESH_TOKEN_SECRET_KEY as string, { expiresIn: '30d' });
+export const generateAccessToken = (payload: { id: number; email: string }) => 
+    jwt.sign(payload, process.env.TOKEN_SECRET_KEY as string, { expiresIn: '1m' });
+
+export const generateRefreshToken = (payload: { id: number; email: string }) =>
+    jwt.sign(payload, process.env.REFRESH_TOKEN_SECRET_KEY as string, { expiresIn: '2m' });
+
+
+
+export const generateTokemsAndHashRefreshToken = async (payload: { id: number; email: string }) => {
+        const token = utils.generateAccessToken(payload);
+        const refresh_token = utils.generateRefreshToken(payload);
+        const hashedRefreshToken = await bcrypt.hash(refresh_token, 10);
+        return { token, refresh_token, hashedRefreshToken };
+}
 
 
 const utils = {
     generateAccessToken,
-    generateRefreshToken
+    generateRefreshToken,
+    generateTokemsAndHashRefreshToken
 }
 
 export default utils
