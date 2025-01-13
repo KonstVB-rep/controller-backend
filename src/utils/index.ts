@@ -4,10 +4,10 @@ import 'dotenv/config'
 import bcrypt from "bcrypt";
 
 export const generateAccessToken = (payload: { id: number; email: string }) => 
-    jwt.sign(payload, process.env.TOKEN_SECRET_KEY as string, { expiresIn: '1m' });
+    jwt.sign(payload, process.env.TOKEN_SECRET_KEY as string, { expiresIn: '15m' });
 
 export const generateRefreshToken = (payload: { id: number; email: string }) =>
-    jwt.sign(payload, process.env.REFRESH_TOKEN_SECRET_KEY as string, { expiresIn: '2m' });
+    jwt.sign(payload, process.env.REFRESH_TOKEN_SECRET_KEY as string, { expiresIn: '12h' });
 
 
 

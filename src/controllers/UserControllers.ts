@@ -22,8 +22,8 @@ export const register = async (req: Request, res: Response) => {
       });
       return;
     }
-    const password = req.body.password;
 
+    const password = req.body.password;
     const salt = bcrypt.genSaltSync(10);
     const hash = bcrypt.hashSync(password, salt);
 
@@ -184,7 +184,7 @@ interface RequestWithUserId extends Request {
 }
 
 export const getCurrentUser = async (req: RequestWithUserId, res: Response) => {
-  console.log("getCurrentUser", req.body);
+
   try {
     const user = await prisma.users.findUnique({
       where: {
@@ -255,10 +255,7 @@ export const refreshTokens = async (
       refreshTokenDB.refresh_token
     );
 
-    console.log(isMatch, "isMatch");
-
     if (!isMatch) {
-      console.log("!isMatch");
       res
         .status(403)
         .json({ success: false, message: "Invalid refresh token" });
